@@ -79,6 +79,74 @@ function handleExport() {
       </div>
     </div>
 
+    <div
+      v-if="store.terrainProfile.length >= 2"
+      class="bg-slate-900 rounded p-2 space-y-1.5"
+    >
+      <div class="text-slate-400 text-[11px] mb-1">地形安全检查 (安全距离 {{ store.droneConfig.safeDistance }}m)</div>
+
+      <div class="flex items-center justify-between text-[11px]">
+        <span class="text-slate-400">检查航点</span>
+        <span class="text-slate-200 font-mono">{{ store.terrainProfile.length }}</span>
+      </div>
+
+      <div class="flex items-center justify-between text-[11px]">
+        <span class="text-slate-400">✓ 安全</span>
+        <span class="text-green-400 font-mono">
+          {{ store.terrainProfile.length - store.altitudeIssues.length }}
+        </span>
+      </div>
+
+      <div
+        v-if="store.hasAltitudeWarning"
+        class="flex items-center justify-between text-[11px] py-0.5 px-1 rounded bg-amber-900/30 -mx-1"
+      >
+        <span class="text-amber-300">⚠ 警告</span>
+        <span class="text-amber-400 font-mono font-bold">
+          {{ store.altitudeIssues.filter(i => i.level === 'warning').length }}
+        </span>
+      </div>
+
+      <div
+        v-if="store.hasAltitudeDanger"
+        class="flex items-center justify-between text-[11px] py-0.5 px-1 rounded bg-red-900/40 -mx-1"
+      >
+        <span class="text-red-300">✗ 危险</span>
+        <span class="text-red-400 font-mono font-bold">
+          {{ store.altitudeIssues.filter(i => i.level === 'danger').length }}
+        </span>
+      </div>
+
+      <div v-if="store.hazardSegments.length > 0" class="pt-1 border-t border-slate-700 mt-1">
+        <div class="text-[10px] text-slate-400 mb-1">
+          连续问题段: {{ store.hazardSegments.length }}
+        </div>
+        <div class="space-y-0.5">
+          <div
+            v-for="seg in store.hazardSegments.slice(0, 3)"
+            :key="`seg-${seg.startIndex}-${seg.endIndex}`"
+            :class="[
+              'text-[10px] px-1.5 py-0.5 rounded flex justify-between',
+              seg.maxLevel === 'danger'
+                ? 'bg-red-900/40 text-red-300'
+                : 'bg-amber-900/40 text-amber-300'
+            ]"
+          >
+            <span>WP{{ seg.startIndex + 1 }}-{{ seg.endIndex + 1 }}</span>
+            <span class="font-mono">
+              净高 {{ seg.minClearance.toFixed(1) }}m
+            </span>
+          </div>
+          <div
+            v-if="store.hazardSegments.length > 3"
+            class="text-[10px] text-slate-500 px-1"
+          >
+            ...另有 {{ store.hazardSegments.length - 3 }} 段
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="border-t border-slate-700 pt-2">
       <h4 class="text-xs text-slate-400 mb-1">无人机配置</h4>
       <div class="grid grid-cols-3 gap-1 text-[10px] text-slate-500">

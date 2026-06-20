@@ -37,3 +37,39 @@ export interface DroneConfig {
   consumptionRate: number;  // mAh/min
   safeDistance: number;     // meters from obstacles
 }
+
+export type AltitudeAlertLevel = 'safe' | 'warning' | 'danger';
+
+export interface AltitudeIssue {
+  index: number;
+  lat: number;
+  lng: number;
+  altitude: number;
+  terrainElevation: number;
+  clearance: number;
+  safeDistance: number;
+  level: AltitudeAlertLevel;
+  message: string;
+}
+
+export interface HazardSegment {
+  startIndex: number;
+  endIndex: number;
+  startLat: number;
+  startLng: number;
+  endLat: number;
+  endLng: number;
+  minClearance: number;
+  maxLevel: AltitudeAlertLevel;
+  points: AltitudeIssue[];
+}
+
+export interface TerrainProfilePoint {
+  lat: number;
+  lng: number;
+  altitude: number;
+  terrainElevation: number;
+  clearance: number;
+  safeLine: number;
+  level: AltitudeAlertLevel;
+}

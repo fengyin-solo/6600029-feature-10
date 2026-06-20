@@ -1,4 +1,14 @@
-import type { Waypoint, NoFlyZone, TerrainPoint, FlightPlan, DroneConfig } from '../types';
+import type {
+  Waypoint,
+  NoFlyZone,
+  TerrainPoint,
+  FlightPlan,
+  DroneConfig,
+  AltitudeAlertLevel,
+  AltitudeIssue,
+  HazardSegment,
+  TerrainProfilePoint,
+} from '../types';
 
 // ─── Haversine distance ─────────────────────────────────────────────────────
 export function haversine(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -392,3 +402,118 @@ export const mockTerrainData: TerrainPoint[] = (() => {
   }
   return points;
 })();
+
+function getNearestTerrainElevation(lat: number, lng: number, terrain: TerrainPoint[]): number {
+  let nearestElev = 0;
+  let minDist = Infinity;
+  for (const tp of terrain) {
+    const d = haversine(lat, lng, tp.lat, tp.lng);
+    if (d < minDist) {
+      minDist = d;
+      nearestElev = tp.elevation;
+    }
+  }
+  return nearestElev;
+}
+
+function classifyClearance(clearance: number, safeDistance: number): AltitudeAlertLevel {
+  if (clearance <= 0) return 'danger';
+  if (clearance < safeDistance * 0.5) return 'danger';
+  if (clearance < safeDistance) return 'warning';
+  return 'safe';
+}
+
+function buildAlertMessage(
+  level: AltitudeAlertLevel,
+  clearance: number,
+  safeDistance: number
+): string {
+  if (level === 'danger') {
+    if (clearance <= 0) {
+      return `严重警告：飞行高度低于地形 ${Math.abs(clearance).toFixed(1)}m，存在碰撞风险！`;
+    }
+    return `危险：净高仅 ${clearance.toFixed(1)}m（安全距离 ${safeDistance}m）`;
+  }
+  if (level === 'warning') {
+    return `警告：净高 ${clearance.toFixed(1)}m，低于安全距离 ${safeDistance}m`;
+  }
+  return `安全：净高 ${clearance.toFixed(1)}m`;
+}
+
+export function analyzeAltitudeIssues(
+  waypoints: Waypoint[],
+  terrain: TerrainPoint[],
+  safeDistance: number
+): AltitudeIssue[] {
+  const issues: AltitudeIssue[] = [];
+  for (let i = 0; i < waypoints.length; i++) {
+    const wp = waypoints[i];
+    const terrainElev = getNearestTerrainElevation(wp.lat, wp.lng, terrain);
+    const clearance = wp.altitude - terrainElev;
+    const level = classifyClearance(clearance, safeDistance);
+    if (level !== 'safe') {
+      issues.push({
+        index: i,
+        lat: wp.lat,
+        lng: wp.lng,
+        altitude: wp.altitude,
+        terrainElevation: terrainElev,
+        clearance,
+        safeDistance,
+        level,
+        message: buildAlertMessage(level, clearance, safeDistance),
+      });
+    }
+  }
+  return issues;
+}
+
+export function detectHazardSegments(issues: AltitudeIssue[]): HazardSegment[] {
+  if (issues.length === 0) return [];
+  const segments: HazardSegment[] = [];
+  let startIdx = 0;
+  for (let i = 1; i <= issues.length; i++) {
+    if (i === issues.length || issues[i].index !== issues[i - 1].index + 1) {
+      const segIssues = issues.slice(startIdx, i);
+      const minClearance = Math.min(...segIssues.map((x) => x.clearance));
+      const maxLevel: AltitudeAlertLevel = segIssues.some((x) => x.level === 'danger')
+        ? 'danger'
+        : 'warning';
+      const first = segIssues[0];
+      const last = segIssues[segIssues.length - 1];
+      segments.push({
+        startIndex: first.index,
+        endIndex: last.index,
+        startLat: first.lat,
+        startLng: first.lng,
+        endLat: last.lat,
+        endLng: last.lng,
+        minClearance,
+        maxLevel,
+        points: segIssues,
+      });
+      startIdx = i;
+    }
+  }
+  return segments;
+}
+
+export function buildTerrainProfilePoints(
+  waypoints: Waypoint[],
+  terrain: TerrainPoint[],
+  safeDistance: number
+): TerrainProfilePoint[] {
+  return waypoints.map((wp) => {
+    const terrainElev = getNearestTerrainElevation(wp.lat, wp.lng, terrain);
+    const clearance = wp.altitude - terrainElev;
+    return {
+      lat: wp.lat,
+      lng: wp.lng,
+      altitude: wp.altitude,
+      terrainElevation: terrainElev,
+      clearance,
+      safeLine: terrainElev + safeDistance,
+      level: classifyClearance(clearance, safeDistance),
+    };
+  });
+}

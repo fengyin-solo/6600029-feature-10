@@ -1,6 +1,15 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import type { Waypoint, NoFlyZone, TerrainPoint, FlightPlan, DroneConfig } from '../types';
+import type {
+  Waypoint,
+  NoFlyZone,
+  TerrainPoint,
+  FlightPlan,
+  DroneConfig,
+  AltitudeIssue,
+  HazardSegment,
+  TerrainProfilePoint,
+} from '../types';
 import {
   aStarPathfind,
   rrtPathfind,
@@ -10,6 +19,9 @@ import {
   exportKML,
   mockNoFlyZones,
   mockTerrainData,
+  analyzeAltitudeIssues,
+  detectHazardSegments,
+  buildTerrainProfilePoints,
 } from '../utils/pathfinding';
 
 export const useDroneStore = defineStore('drone', () => {
@@ -124,26 +136,34 @@ export const useDroneStore = defineStore('drone', () => {
     return currentPlan.value.batteryUsage;
   });
 
-  const terrainProfile = computed(() => {
+  const terrainProfile = computed((): TerrainProfilePoint[] => {
     if (waypoints.value.length < 2) return [];
-    return waypoints.value.map((wp) => {
-      let nearestElev = 0;
-      let minDist = Infinity;
-      for (const tp of terrainData.value) {
-        const d =
-          (tp.lat - wp.lat) ** 2 + (tp.lng - wp.lng) ** 2;
-        if (d < minDist) {
-          minDist = d;
-          nearestElev = tp.elevation;
-        }
-      }
-      return {
-        lat: wp.lat,
-        lng: wp.lng,
-        altitude: wp.altitude,
-        terrainElevation: nearestElev,
-      };
-    });
+    return buildTerrainProfilePoints(
+      waypoints.value,
+      terrainData.value,
+      droneConfig.value.safeDistance
+    );
+  });
+
+  const altitudeIssues = computed((): AltitudeIssue[] => {
+    if (waypoints.value.length < 2) return [];
+    return analyzeAltitudeIssues(
+      waypoints.value,
+      terrainData.value,
+      droneConfig.value.safeDistance
+    );
+  });
+
+  const hazardSegments = computed((): HazardSegment[] => {
+    return detectHazardSegments(altitudeIssues.value);
+  });
+
+  const hasAltitudeDanger = computed((): boolean => {
+    return altitudeIssues.value.some((i) => i.level === 'danger');
+  });
+
+  const hasAltitudeWarning = computed((): boolean => {
+    return altitudeIssues.value.some((i) => i.level === 'warning');
   });
 
   return {
@@ -160,6 +180,10 @@ export const useDroneStore = defineStore('drone', () => {
     estimatedTime,
     batteryPercent,
     terrainProfile,
+    altitudeIssues,
+    hazardSegments,
+    hasAltitudeDanger,
+    hasAltitudeWarning,
     addWaypoint,
     removeWaypoint,
     updateWaypoint,
