@@ -46,12 +46,29 @@ export const useDroneStore = defineStore('drone', () => {
   function addWaypoint(
     lat: number,
     lng: number,
-    altitude = 100,
+    altitude?: number,
     speed = 10,
     action: Waypoint['action'] = 'none'
   ) {
     const id = `wp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-    waypoints.value.push({ id, lat, lng, altitude, speed, action });
+    let finalAltitude = altitude;
+    if (finalAltitude === undefined) {
+      let nearestElev = 0;
+      let minDist = Infinity;
+      for (const tp of terrainData.value) {
+        const d =
+          (tp.lat - lat) ** 2 + (tp.lng - lng) ** 2;
+        if (d < minDist) {
+          minDist = d;
+          nearestElev = tp.elevation;
+        }
+      }
+      finalAltitude = Math.min(
+        nearestElev + droneConfig.value.safeDistance + 10,
+        droneConfig.value.maxAltitude
+      );
+    }
+    waypoints.value.push({ id, lat, lng, altitude: finalAltitude, speed, action });
   }
 
   function removeWaypoint(id: string) {
@@ -67,9 +84,26 @@ export const useDroneStore = defineStore('drone', () => {
     const bounds = { minLat: 39.85, maxLat: 39.95, minLng: 116.35, maxLng: 116.45 };
     let raw: Waypoint[];
     if (selectedAlgorithm.value === 'astar') {
-      raw = aStarPathfind(start, goal, 30, noFlyZones.value, bounds);
+      raw = aStarPathfind(
+        start,
+        goal,
+        30,
+        noFlyZones.value,
+        bounds,
+        terrainData.value,
+        droneConfig.value.safeDistance,
+        droneConfig.value.maxAltitude
+      );
     } else {
-      raw = rrtPathfind(start, goal, noFlyZones.value);
+      raw = rrtPathfind(
+        start,
+        goal,
+        noFlyZones.value,
+        500,
+        terrainData.value,
+        droneConfig.value.safeDistance,
+        droneConfig.value.maxAltitude
+      );
     }
     const smoothed = smoothPath(raw);
     waypoints.value = smoothed;

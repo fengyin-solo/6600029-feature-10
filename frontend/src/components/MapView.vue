@@ -327,13 +327,17 @@ function drawSimDrone() {
   }
 }
 
-watch(() => store.waypoints.length, () => {
-  nextTick(() => {
-    drawWaypoints();
-    drawRouteSegments();
-    drawHazardMarkers();
-  });
-});
+watch(
+  () => store.waypoints,
+  () => {
+    nextTick(() => {
+      drawWaypoints();
+      drawRouteSegments();
+      drawHazardMarkers();
+    });
+  },
+  { deep: true }
+);
 
 watch(
   () => [store.hazardSegments, store.altitudeIssues, store.terrainProfile],

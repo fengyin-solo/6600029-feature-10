@@ -39,7 +39,10 @@ export function aStarPathfind(
   goal: [number, number],
   gridSize: number,
   noFlyZones: NoFlyZone[],
-  bounds: { minLat: number; maxLat: number; minLng: number; maxLng: number }
+  bounds: { minLat: number; maxLat: number; minLng: number; maxLng: number },
+  terrain: TerrainPoint[] = [],
+  safeDistance = 30,
+  maxAltitude = 500
 ): Waypoint[] {
   const { minLat, maxLat, minLng, maxLng } = bounds;
   const rows = gridSize;
@@ -53,6 +56,12 @@ export function aStarPathfind(
       if (d < zone.radius) return true;
     }
     return false;
+  };
+
+  const calcAltitude = (lat: number, lng: number): number => {
+    const terrainElev = getNearestTerrainElevation(lat, lng, terrain);
+    const desiredAlt = terrainElev + safeDistance + 10;
+    return Math.min(desiredAlt, maxAltitude);
   };
 
   const toRow = (lat: number) => Math.round((lat - minLat) / dLat);
@@ -100,11 +109,12 @@ export function aStarPathfind(
       let n: GridNode | null = current;
       let idx = 0;
       while (n) {
+        const alt = calcAltitude(n.lat, n.lng);
         path.unshift({
           id: `wp-a-${idx++}`,
           lat: n.lat,
           lng: n.lng,
-          altitude: 100,
+          altitude: alt,
           speed: 10,
           action: 'none',
         });
@@ -144,9 +154,11 @@ export function aStarPathfind(
   }
 
   // fallback: straight line
+  const startAlt = calcAltitude(start[0], start[1]);
+  const goalAlt = calcAltitude(goal[0], goal[1]);
   return [
-    { id: 'wp-fallback-0', lat: start[0], lng: start[1], altitude: 100, speed: 10, action: 'none' as const },
-    { id: 'wp-fallback-1', lat: goal[0], lng: goal[1], altitude: 100, speed: 10, action: 'none' as const },
+    { id: 'wp-fallback-0', lat: start[0], lng: start[1], altitude: startAlt, speed: 10, action: 'none' as const },
+    { id: 'wp-fallback-1', lat: goal[0], lng: goal[1], altitude: goalAlt, speed: 10, action: 'none' as const },
   ];
 }
 
@@ -155,13 +167,22 @@ export function rrtPathfind(
   start: [number, number],
   goal: [number, number],
   noFlyZones: NoFlyZone[],
-  maxIter = 500
+  maxIter = 500,
+  terrain: TerrainPoint[] = [],
+  safeDistance = 30,
+  maxAltitude = 500
 ): Waypoint[] {
   interface RRTNode {
     lat: number;
     lng: number;
     parent: RRTNode | null;
   }
+
+  const calcAltitude = (lat: number, lng: number): number => {
+    const terrainElev = getNearestTerrainElevation(lat, lng, terrain);
+    const desiredAlt = terrainElev + safeDistance + 10;
+    return Math.min(desiredAlt, maxAltitude);
+  };
 
   const isCollision = (lat: number, lng: number): boolean => {
     for (const zone of noFlyZones) {
@@ -217,11 +238,12 @@ export function rrtPathfind(
       let n: RRTNode | null = goalNode;
       let idx = 0;
       while (n) {
+        const alt = calcAltitude(n.lat, n.lng);
         path.unshift({
           id: `wp-r-${idx++}`,
           lat: n.lat,
           lng: n.lng,
-          altitude: 100,
+          altitude: alt,
           speed: 10,
           action: 'none',
         });
@@ -231,9 +253,11 @@ export function rrtPathfind(
     }
   }
 
+  const sAlt = calcAltitude(start[0], start[1]);
+  const gAlt = calcAltitude(goal[0], goal[1]);
   return [
-    { id: 'wp-rf-0', lat: start[0], lng: start[1], altitude: 100, speed: 10, action: 'none' as const },
-    { id: 'wp-rf-1', lat: goal[0], lng: goal[1], altitude: 100, speed: 10, action: 'none' as const },
+    { id: 'wp-rf-0', lat: start[0], lng: start[1], altitude: sAlt, speed: 10, action: 'none' as const },
+    { id: 'wp-rf-1', lat: goal[0], lng: goal[1], altitude: gAlt, speed: 10, action: 'none' as const },
   ];
 }
 
@@ -419,7 +443,7 @@ function getNearestTerrainElevation(lat: number, lng: number, terrain: TerrainPo
 function classifyClearance(clearance: number, safeDistance: number): AltitudeAlertLevel {
   if (clearance <= 0) return 'danger';
   if (clearance < safeDistance * 0.5) return 'danger';
-  if (clearance < safeDistance) return 'warning';
+  if (clearance <= safeDistance) return 'warning';
   return 'safe';
 }
 
@@ -432,10 +456,10 @@ function buildAlertMessage(
     if (clearance <= 0) {
       return `严重警告：飞行高度低于地形 ${Math.abs(clearance).toFixed(1)}m，存在碰撞风险！`;
     }
-    return `危险：净高仅 ${clearance.toFixed(1)}m（安全距离 ${safeDistance}m）`;
+    return `危险：净高仅 ${clearance.toFixed(1)}m，远低于安全距离 ${safeDistance}m`;
   }
   if (level === 'warning') {
-    return `警告：净高 ${clearance.toFixed(1)}m，低于安全距离 ${safeDistance}m`;
+    return `警告：净高 ${clearance.toFixed(1)}m，低于安全距离 ${safeDistance}m，请注意拉高`;
   }
   return `安全：净高 ${clearance.toFixed(1)}m`;
 }
